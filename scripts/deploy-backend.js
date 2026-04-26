@@ -2,6 +2,8 @@
 
 const chalk = require('chalk');
 const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
 
 // NOTE: With Vercel, frontend and backend deploy together.
 // Vercel handles both static files AND serverless functions (API routes)
@@ -44,3 +46,81 @@ console.log(chalk.white('  3. Click Deploy'));
 // HINT: Use fs.existsSync() to check files
 // HINT: Use process.version to check Node.js version
 // =============================================================================
+
+const PROJECT_ROOT = path.join(__dirname, '..');
+
+function checkRequiredFiles() {
+  const requiredFiles = [
+    'package.json',
+    'vercel.json',
+    path.join('api', 'index.js'),
+    path.join('frontend', 'server.js'),
+  ];
+
+  const missing = requiredFiles.filter((relPath) => {
+    const absPath = path.join(PROJECT_ROOT, relPath);
+    return !fs.existsSync(absPath);
+  });
+
+  if (missing.length > 0) {
+    console.log(chalk.red('Missing required files:'));
+    missing.forEach((p) => console.log(chalk.red(`  - ${p}`)));
+    return false;
+  }
+
+  console.log(chalk.green('Required files: OK'));
+  return true;
+}
+
+function checkNodeVersion() {
+  const raw = process.version;
+  const major = Number(String(raw).replace(/^v/, '').split('.')[0]);
+
+  if (!Number.isFinite(major)) {
+    console.log(chalk.red(`Unable to parse Node.js version: ${raw}`));
+    return false;
+  }
+
+  if (major < 18) {
+    console.log(chalk.red(`Node.js ${raw} detected. Node.js 18+ is required.`));
+    return false;
+  }
+
+  console.log(chalk.green(`Node.js version: OK (${raw})`));
+  return true;
+}
+
+function checkServerSyntax() {
+  const serverPath = path.join(PROJECT_ROOT, 'frontend', 'server.js');
+  const result = spawnSync(process.execPath, ['--check', serverPath], {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+
+  if (result.status !== 0) {
+    console.log(chalk.red('Syntax check failed for frontend/server.js'));
+    const output = `${result.stdout || ''}${result.stderr || ''}`.trim();
+    if (output) console.log(output);
+    return false;
+  }
+
+  console.log(chalk.green('Syntax check: OK (frontend/server.js)'));
+  return true;
+}
+
+console.log('');
+console.log(chalk.blue('Pre-deployment checks'));
+console.log(chalk.gray('================================================'));
+
+const filesOk = checkRequiredFiles();
+const nodeOk = checkNodeVersion();
+const syntaxOk = checkServerSyntax();
+
+console.log(chalk.gray('================================================'));
+
+if (!filesOk || !nodeOk || !syntaxOk) {
+  console.log(chalk.red('Pre-deployment checks failed. Fix the issues above and try again.'));
+  process.exitCode = 1;
+} else {
+  console.log(chalk.green('All pre-deployment checks passed.'));
+}
